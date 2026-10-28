@@ -1,0 +1,155 @@
+# Jarvis configuration. Restart after editing.
+
+wake_word:
+  name: jarvis
+  # Extra spellings Whisper tends to produce for "Jarvis". (Real names like Travis/Gervais are deliberately absent.)
+  # While sleeping, the wake word only counts at the START of an utterance ("Jarvis, ...", "Hey Jarvis, ...")
+  # or in a very short utterance (3 words or fewer); a mid-sentence "Jarvis" does not wake him.
+  aliases: [jarvis, jarvice, jervis, jarvas, jarbis, charvis, harvis]
+  fuzzy_threshold: 0.78       # 0-1, similarity needed to count as the wake word
+  inactivity_timeout_s: 300   # active -> back to sleep after this many idle seconds (0 = never). Paused while
+                              # a confirmation question or a coding turn is running.
+
+llm:
+  host: http://127.0.0.1:11434
+  # If the startup VRAM check says a model is not 100% on the GPU, switch to the 7B models:
+  #   model: qwen2.5:7b
+  #   coder_model: qwen2.5-coder:7b
+  model: qwen2.5:14b         # chat model
+  coder_model: qwen2.5-coder:14b   # used for coding requests ("" = use the chat model for everything)
+  coder_num_ctx: 8192
+  coder_temperature: 0.2
+  coder_max_tool_rounds: 14   # coding needs many tool calls: write, run, read error, edit, run...
+  coding_followup_s: 180      # after a coding turn, short follow-ups ("run it", "yes") stay on the coder model
+  auto_pull: true             # download missing models with Ollama
+  temperature: 0.7
+  num_ctx: 8192
+  keep_alive: 30m
+  max_tool_rounds: 3
+  # Rough token budget for short-term history (older turns are dropped first).
+  history_token_budget: 4500
+  persona: |
+    You are Jarvis, the user's personal AI companion, in the spirit of Iron Man's J.A.R.V.I.S.
+    Personality: calm, composed, dry British wit, quietly loyal. You are a companion, not a generic
+    assistant: you have opinions, you remember things about the user, and you occasionally tease
+    them gently. Never grovel, never say "As an AI". Address the user naturally (no "sir" overload).
+    Style rules:
+    - Your replies are SPOKEN ALOUD. Keep them short: one to three sentences unless asked for more.
+    - No markdown, no bullet lists, no emojis, no URLs read out. Write numbers and units as you would say them.
+    - ALWAYS reply in English, even if the user speaks French. (If they speak French you may understand
+      it perfectly; just answer in English.)
+    - Use the web_search tool for news, weather, prices, sports, recent events, or any fact you are
+      not sure about. Do not guess at current information. After searching, give only the key facts in
+      at most two short sentences; skip filler like sunrise times unless asked.
+    - You CAN write, edit, read and run code: you have a private workspace folder and coding tools. When asked
+      to program anything, do it. NEVER say you can't code or can't run code. NEVER read code aloud.
+    - If you are asked to do something else you cannot do (you have no hands, no smart-home access), say so with wit.
+  # Added to the system prompt on coding turns only.
+  coder_prompt: |
+    CODING MODE. You work in a sandboxed workspace folder through tools:
+    create_file, read_file, edit_file, list_files, delete_file, run_python, pip_install.
+    - Code goes ONLY into files via the tools. Never paste code in your reply and never read code aloud.
+    - Use simple workspace-relative names like snake.py. If the user names a file, use that exact name.
+    - To change existing code: read_file, then edit_file (or create_file with the complete new content).
+    - Write complete, runnable Python 3 with no placeholders or TODOs. Scripts get NO keyboard input (stdin is closed),
+      so never call input() unless asked. Prefer the standard library; third-party packages need pip_install.
+    - If the request includes running it ("...and run it", "test it", "execute it"), you MUST call run_python in the
+      same turn, immediately after saving the file; the user is asked to approve and sees the code. Do not ask first.
+      If they only asked you to write it, save it and then ask "Want me to run it?" without running it.
+      When they answer "yes" / "run it" to that question, call run_python.
+    - If a run fails: read the traceback, fix the file, run again. You get at most 3 failed runs per request,
+      then explain the problem briefly. If the user declines a run, do not insist.
+    - NEVER claim you saved, edited or ran something unless the tool call actually happened this turn and succeeded.
+      A reply without a tool call changes nothing on disk.
+    - Your final reply is SPOKEN: one or two short sentences, no code, no long output. After saving, say what you
+      made and the file name; after running, state only the key result (e.g. the last line or a count).
+
+code:
+  workspace: workspace         # Jarvis can only read/write/run files inside this folder
+  # Scripts run with workspace/.venv (created on first use), never with Jarvis's own environment.
+  run_timeout_s: 60
+  max_run_failures: 3          # failed runs allowed per request before he stops retrying
+  max_file_kb: 200
+  confirm_timeout_s: 90        # how long he waits for yes/no before assuming "no"
+
+stt:
+  model: medium               # "medium" or "large-v3-turbo" (or any faster-whisper model)
+  device: cuda                # cuda | cpu
+  compute_type: float16       # float16 on GPU; int8 on CPU
+  beam_size: 3
+  allowed_languages: [en, fr] # anything else detected is re-decoded as English
+  initial_prompt: "Jarvis."   # biases Whisper toward spelling the wake word correctly
+  model_dir: models/whisper
+
+audio:
+  input_device: ""            # "" = system default; or part of a device name ("SoloCast") or an index. See /mic.
+  sample_rate: 16000
+  block_ms: 32
+  # Energy VAD (adaptive to room noise)
+  vad_ratio: 3.0              # speech if level > noise_floor * ratio
+  vad_min_rms: 0.008          # absolute minimum level (0-1). Raise it if the room is noisy.
+  start_blocks: 3             # consecutive loud blocks needed to start an utterance
+  silence_ms: 800             # silence that ends an utterance
+  min_speech_ms: 300
+  max_utterance_s: 30
+  preroll_ms: 320
+  # Barge-in: talking over Jarvis interrupts him. With speakers, he can hear himself,
+  # so this requires a much louder voice. Headphones work best. Set false to disable.
+  barge_in: true
+  barge_in_ratio: 4.0         # threshold multiplier while he is speaking (lower = easier to interrupt)
+  barge_in_blocks: 8
+
+tts:
+  default_voice: jarvis
+  piper_dir: models/piper
+  output_device: null
+  voices:
+    # Clean, natural English (British male).
+    jarvis:
+      label: "Jarvis (clean British)"
+      model: en_GB-alan-medium
+      length_scale: 1.0
+      effects: []
+    # Clean, natural English (American male, high quality).
+    ryan:
+      label: "Ryan (clean American)"
+      aliases: [ryan, rion, brian, ryen]
+      model: en_US-ryan-high
+      length_scale: 1.0
+      effects: []
+    # Clean, natural English (American female).
+    amy:
+      label: "Amy (clean American, female)"
+      aliases: [aimee, amie, emmy]
+      model: en_US-amy-medium
+      length_scale: 1.0
+      effects: []
+    # Dark robotic Cyn-style voice (Murder Drones): base TTS + effects.
+    cyn:
+      label: "Cyn (dark robotic)"
+      aliases: [sin, sinn, cin, sync, synth, sign, sinne, zin]   # how Whisper tends to hear "Cyn"
+      model: en_US-amy-medium
+      length_scale: 1.05
+      effects:
+        - {type: pitch, semitones: -4.0}
+        - {type: highpass, cutoff: 90}
+        - {type: ring_mod, freq: 55, mix: 0.30}
+        - {type: bitcrush, bits: 10, downsample: 2}
+        - {type: overdrive, drive: 2.2}
+        - {type: lowpass, cutoff: 5200}
+        - {type: reverb, decay: 0.55, wet: 0.22}
+
+memory:
+  db_path: data/memory.db
+  extract_facts: true         # auto-extract facts from conversation
+  extract_model: ""           # "" = same as llm.model; e.g. qwen2.5:3b for a lighter model (needs pulling)
+  max_injected: 8             # relevant facts injected per prompt
+
+web_search:
+  max_results: 5
+  pages_to_fetch: 2
+  chars_per_page: 1800
+  timeout_s: 8
+
+settings_file: data/settings.json
+log_level: INFO

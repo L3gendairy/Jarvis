@@ -1,0 +1,13 @@
+numpy>=1.26
+scipy>=1.11
+PyYAML>=6.0
+sounddevice>=0.4.6
+faster-whisper>=1.1.0
+ctranslate2>=4.6.0
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*
+piper-tts>=1.2.0
+ollama>=0.4.0
+ddgs>=9.0
+requests>=2.31
+beautifulsoup4>=4.12
